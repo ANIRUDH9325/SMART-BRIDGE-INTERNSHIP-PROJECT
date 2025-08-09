@@ -1,0 +1,173 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "authorship_tag": "ABX9TyObeprN2jc9ipyObYafxnmy",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/ANIRUDH9325/SMART-BRIDGE-INTERNSHIP-PROJECT/blob/main/app_py\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "-iZ9TZl6Nhlj",
+        "outputId": "903305f8-8400-4700-bf39-06b24175870d"
+      },
+      "outputs": [
+        {
+          "metadata": {
+            "tags": null
+          },
+          "name": "stdout",
+          "output_type": "stream",
+          "text": [
+            " * Serving Flask app '__main__'\n",
+            " * Debug mode: on\n"
+          ]
+        },
+        {
+          "metadata": {
+            "tags": null
+          },
+          "name": "stderr",
+          "output_type": "stream",
+          "text": [
+            "INFO:werkzeug:\u001b[31m\u001b[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.\u001b[0m\n",
+            " * Running on http://127.0.0.1:5000\n",
+            "INFO:werkzeug:\u001b[33mPress CTRL+C to quit\u001b[0m\n",
+            "INFO:werkzeug: * Restarting with stat\n"
+          ]
+        }
+      ],
+      "source": [
+        "from flask import Flask, request, jsonify\n",
+        "import numpy as np\n",
+        "import pandas as pd\n",
+        "from sklearn.preprocessing import StandardScaler\n",
+        "from sklearn.linear_model import LinearRegression\n",
+        "import warnings\n",
+        "warnings.filterwarnings('ignore')\n",
+        "\n",
+        "app = Flask(__name__)\n",
+        "\n",
+        "# --- Model and Data Loading ---\n",
+        "\n",
+        "def preprocess_inputs(df, scaler=None):\n",
+        "    \"\"\"Preprocesses the input data.\"\"\"\n",
+        "    df = df.copy()\n",
+        "\n",
+        "    # Drop profile_id if it exists\n",
+        "    if 'profile_id' in df.columns:\n",
+        "        df = df.drop('profile_id', axis=1)\n",
+        "\n",
+        "    y = None\n",
+        "    if 'pm' in df.columns:\n",
+        "        y = df['pm'].copy()\n",
+        "        X = df.drop('pm', axis=1).copy()\n",
+        "    else:\n",
+        "        X = df.copy()\n",
+        "\n",
+        "    if scaler is None:\n",
+        "        scaler = StandardScaler()\n",
+        "        X_scaled = scaler.fit_transform(X)\n",
+        "    else:\n",
+        "        X_scaled = scaler.transform(X)\n",
+        "\n",
+        "    X = pd.DataFrame(X_scaled, columns=X.columns)\n",
+        "\n",
+        "    if y is not None:\n",
+        "        return X, y, scaler\n",
+        "    else:\n",
+        "        return X, scaler\n",
+        "\n",
+        "\n",
+        "# Creating a dummy csv file\n",
+        "data = {\n",
+        "    'u_q': np.random.rand(100) * 5 - 2.5,\n",
+        "    'coolant': np.random.rand(100) * 20 + 10,\n",
+        "    'stator_winding': np.random.rand(100) * 50 + 20,\n",
+        "    'u_d': np.random.rand(100) * 5 - 2.5,\n",
+        "    'stator_tooth': np.random.rand(100) * 30 + 15,\n",
+        "    'motor_speed': np.random.rand(100) * 1000,\n",
+        "    'i_d': np.random.rand(100) * 2 - 1,\n",
+        "    'i_q': np.random.rand(100) * 2 - 1,\n",
+        "    'pm': np.random.rand(100) * 80 + 20,\n",
+        "    'stator_yoke': np.random.rand(100) * 40 + 20,\n",
+        "    'ambient': np.random.rand(100) * 30 + 10,\n",
+        "    'torque': np.random.rand(100) * 10,\n",
+        "    'profile_id': np.random.randint(1, 10, 100)\n",
+        "}\n",
+        "dummy_df = pd.DataFrame(data)\n",
+        "dummy_df.to_csv(\"measures_v2.csv\", index=False)\n",
+        "\n",
+        "\n",
+        "# Load and preprocess data\n",
+        "motor_temp = pd.read_csv(\"measures_v2.csv\")\n",
+        "X_train, y_train, scaler = preprocess_inputs(motor_temp)\n",
+        "\n",
+        "# Train the model\n",
+        "model = LinearRegression()\n",
+        "model.fit(X_train, y_train)\n",
+        "\n",
+        "\n",
+        "# --- API Endpoint ---\n",
+        "\n",
+        "@app.route(\"/predict\", methods=[\"POST\"])\n",
+        "def predict():\n",
+        "    \"\"\"Endpoint for getting motor temperature predictions.\"\"\"\n",
+        "    try:\n",
+        "        # Get the input data from the request\n",
+        "        input_data = request.get_json()\n",
+        "        input_df = pd.DataFrame([input_data])\n",
+        "\n",
+        "        # Preprocess the input data\n",
+        "        X_pred, _ = preprocess_inputs(input_df, scaler=scaler)\n",
+        "\n",
+        "        # Make a prediction\n",
+        "        prediction = model.predict(X_pred)\n",
+        "\n",
+        "        # Return the prediction as a JSON response\n",
+        "        return jsonify({\"predicted_pm_temperature\": prediction[0]})\n",
+        "\n",
+        "    except Exception as e:\n",
+        "        return jsonify({\"error\": str(e)}), 400\n",
+        "\n",
+        "\n",
+        "if __name__ == \"__main__\":\n",
+        "    app.run(debug=True)"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "s8IelHgLNqRS"
+      },
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
